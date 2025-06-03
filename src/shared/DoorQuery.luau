@@ -14,6 +14,9 @@ return bytenet.defineNamespace("Door", function()
 					door = bytenet.inst,
 				}),
 			}),
+			Sync = bytenet.definePacket({
+				value = bytenet.array(bytenet.inst),
+			}),
 		},
 	}
 end)

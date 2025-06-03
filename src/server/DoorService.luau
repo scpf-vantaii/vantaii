@@ -1,5 +1,6 @@
 --!strict
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local IDManager = require(script.Parent.IDManager)
@@ -7,16 +8,12 @@ local doorQuery = require(ReplicatedStorage.Shared.DoorQuery)
 
 local DoorService = {}
 
-local doors: { Instance } = CollectionService:GetTagged("DOOR")
-
 function DoorService:OnStart(): ()
 	self._connections = {} :: { [number]: { [string]: RBXScriptConnection } }
 
-	for _, door: Instance in pairs(doors) do
-		if not door:IsA("Model") then
-			continue
-		end
+	local doors: { Model } = DoorService:GetDoors()
 
+	for _, door: Model in pairs(doors) do
 		self:SetupDoor(door)
 
 		local id: number? = self:GetIDFromDoor(door)
@@ -25,7 +22,7 @@ function DoorService:OnStart(): ()
 			return
 		end
 
-		self:BindProximityPrompt(id, function()
+		self:BindProximityPrompt(id, function(_player)
 			local openAttr: any = door:GetAttribute("OPEN")
 			local isOpen: boolean = typeof(openAttr) == "boolean" and openAttr or false
 
@@ -36,6 +33,21 @@ function DoorService:OnStart(): ()
 			end
 		end)
 	end
+end
+
+function DoorService:GetDoors(): { Model }
+	local doors: { Model } = {}
+
+	local collection: { Instance } = CollectionService:GetTagged("DOOR")
+	for _, value: Instance in pairs(collection) do
+		if not value:IsA("Model") then
+			continue
+		end
+
+		table.insert(doors, value)
+	end
+
+	return doors
 end
 
 function DoorService:SetupDoor(door: Model): ()
@@ -50,7 +62,9 @@ function DoorService:GetDoorFromID(id: number): Model?
 	local door: Model?
 
 	-- Go through all doors
-	for _, value: Instance in pairs(doors) do
+	local doors: { Model } = DoorService:GetDoors()
+
+	for _, value: Model in pairs(doors) do
 		if not value:IsA("Model") then
 			continue
 		end
@@ -120,5 +134,26 @@ function DoorService:BindProximityPrompt(id: number, callback: () -> ()): ()
 		end
 	end
 end
+
+function DoorService:Sync(player: Player): ()
+	-- Get a list of all the doors in the game
+	local doors: { Model } = DoorService:GetDoors()
+
+	-- Tell the client to sync all doors with the server
+	doorQuery.packets.Sync.sendTo(doors, player)
+end
+
+Players.PlayerAdded:Connect(function(player: Player): ()
+	local function onCharacterAdded(_character): ()
+		-- Sync the door
+		DoorService:Sync(player)
+	end
+
+	player.CharacterAdded:Connect(onCharacterAdded)
+
+	if player.Character then
+		onCharacterAdded(player.Character)
+	end
+end)
 
 return DoorService
