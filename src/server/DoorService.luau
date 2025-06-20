@@ -4,34 +4,88 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local IDManager = require(script.Parent.IDManager)
+local PermissionService = require(script.Parent.PermissionService)
 local doorQuery = require(ReplicatedStorage.Shared.DoorQuery)
 
+local defaultColor = Color3.fromRGB(255, 255, 255)
+local successColor = Color3.fromRGB(0, 255, 0)
+local deniedColor = Color3.fromRGB(255, 0, 0)
+
 local DoorService = {}
+
+local function blinkLight(door: Model, color: Color3, time: number?)
+	local interfaces = door:FindFirstChild("Interfaces")
+	if interfaces and interfaces:IsA("Folder") then
+		for _, interface in pairs(interfaces:GetChildren()) do
+			if interface:IsA("Model") then
+				local light: Instance? = interface:FindFirstChild("Light")
+				if light and light:IsA("BasePart") then
+					light.Color = color
+					task.delay(time or 1, function(): ()
+						light.Color = defaultColor
+					end)
+				end
+			end
+		end
+	end
+end
 
 function DoorService:OnStart(): ()
 	self._connections = {} :: { [number]: { [string]: RBXScriptConnection } }
 
 	local doors: { Model } = DoorService:GetDoors()
 
-	for _, door: Model in pairs(doors) do
-		self:SetupDoor(door)
+	if doors and #doors > 0 then
+		for _, door: Model in pairs(doors) do
+			self:SetupDoor(door)
 
-		local id: number? = self:GetIDFromDoor(door)
+			local id: number? = self:GetIDFromDoor(door)
 
-		if id == nil then
-			return
-		end
-
-		self:BindProximityPrompt(id, function(_player)
-			local openAttr: any = door:GetAttribute("OPEN")
-			local isOpen: boolean = typeof(openAttr) == "boolean" and openAttr or false
-
-			if not isOpen then
-				self:OpenDoor(id)
-			else
-				self:CloseDoor(id)
+			if id == nil then
+				return
 			end
-		end)
+
+			local debounce: boolean = false
+
+			self:BindProximityPrompt(id, function(player: Player): ()
+				local openAttr: any = door:GetAttribute("OPEN")
+				local isOpen: boolean = typeof(openAttr) == "boolean" and openAttr or false
+
+				local canOpen: boolean = DoorService:AuthenticateUser(player, id)
+
+				local settingsModule = door:FindFirstChild("Settings")
+				if not settingsModule or not settingsModule:IsA("ModuleScript") then
+					return false
+				end
+				local settings = require(settingsModule) :: { [any]: any }
+
+				-- First handle blinking the lights
+				if not debounce then
+					-- Then open the door and play sounds etc.
+					if canOpen then
+						if not isOpen then
+							debounce = true
+							blinkLight(door, successColor)
+							self:OpenDoor(id)
+							task.delay(settings["AnimationTime"], function(): ()
+								debounce = false
+							end)
+							return
+						else
+							debounce = true
+							blinkLight(door, successColor)
+							self:CloseDoor(id)
+							task.delay(settings["AnimationTime"], function(): ()
+								debounce = false
+							end)
+							return
+						end
+					end
+				end
+
+				blinkLight(door, deniedColor)
+			end)
+		end
 	end
 end
 
@@ -136,11 +190,42 @@ function DoorService:BindProximityPrompt(id: number, callback: () -> ()): ()
 end
 
 function DoorService:Sync(player: Player): ()
-	-- Get a list of all the doors in the game
 	local doors: { Model } = DoorService:GetDoors()
 
 	-- Tell the client to sync all doors with the server
 	doorQuery.packets.Sync.sendTo(doors, player)
+end
+
+function DoorService:AuthenticateUser(player: Player, id: number): boolean
+	-- Go through the door's permission and check if the player can open it
+	local door: Model? = self:GetDoorFromID(id)
+
+	if door then
+		local settingsModule = door:FindFirstChild("Settings")
+		if not settingsModule or not settingsModule:IsA("ModuleScript") then
+			return false
+		end
+		local settings = require(settingsModule) :: { [any]: any }
+
+		local permissions = settings["Permissions"]
+
+		-- Check if player has the right rank in group
+		for groupName: string, value: any in pairs(permissions["Group"]) do
+			if typeof(value) == "boolean" then
+				if PermissionService:IsInGroup(player, groupName) then
+					return true
+				end
+			elseif typeof(value) == "table" then
+				for rankName: string, _ in pairs(value) do
+					if PermissionService:HasRankInGroup(player, groupName, rankName) then
+						return true
+					end
+				end
+			end
+		end
+	end
+
+	return false
 end
 
 Players.PlayerAdded:Connect(function(player: Player): ()

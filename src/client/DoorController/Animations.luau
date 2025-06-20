@@ -18,7 +18,13 @@ animations.open["SLIDING"] = function(door: Model): ()
 		return
 	end
 
-	local tweenInfo: TweenInfo = TweenInfo.new(1, Enum.EasingStyle.Sine)
+	local settingsModule = door:FindFirstChild("Settings")
+	if not settingsModule or not settingsModule:IsA("ModuleScript") then
+		return false
+	end
+	local settings = require(settingsModule) :: { [any]: any }
+
+	local tweenInfo: TweenInfo = TweenInfo.new(settings["AnimationTime"], Enum.EasingStyle.Sine)
 
 	local goal = {}
 	goal.CFrame = openPart.CFrame
@@ -37,7 +43,13 @@ animations.close["SLIDING"] = function(door: Model): ()
 		return
 	end
 
-	local tweenInfo: TweenInfo = TweenInfo.new(1, Enum.EasingStyle.Sine)
+	local settingsModule = door:FindFirstChild("Settings")
+	if not settingsModule or not settingsModule:IsA("ModuleScript") then
+		return false
+	end
+	local settings = require(settingsModule) :: { [any]: any }
+
+	local tweenInfo: TweenInfo = TweenInfo.new(settings["AnimationTime"], Enum.EasingStyle.Sine)
 
 	local goal = {}
 	goal.CFrame = closedPart.CFrame
