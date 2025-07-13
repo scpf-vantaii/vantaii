@@ -209,8 +209,24 @@ function DoorService:AuthenticateUser(player: Player, id: number): boolean
 
 		local permissions = settings["Permissions"]
 
+		-- Check if player's UserID is in the permission
+		for _, userId: string in pairs(permissions["UserID"]) do
+			if tostring(player.UserId) == userId then
+				return true
+			end
+		end
+
+		-- Check if player is in a team with full permission
+		for teamName, _ in pairs(permissions["Team"]) do
+			-- If player is in the right team here, open the door
+			if player.Team.Name == teamName then
+				return true
+			end
+		end
+
 		-- Check if player has the right rank in group
 		for groupName: string, value: any in pairs(permissions["Group"]) do
+			-- Before this returns true, we also need to check if the player is in that team that the player got granted access to to prevent access to a door on the wrong team
 			if typeof(value) == "boolean" then
 				if PermissionService:IsInGroup(player, groupName) then
 					return true
